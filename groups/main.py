@@ -48,6 +48,7 @@ def main():
         print_h5f_content(h5f)
 
         # visit explores the tree in order
+        # note: visititems is equivalent to visit but passes both h5f_name and h5f
         h5f.visit(lambda h5f_name: print(h5f_name))
 
 

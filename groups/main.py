@@ -47,6 +47,9 @@ def main():
         # print file structure
         print_h5f_content(h5f)
 
+        # visit explores the tree in order
+        h5f.visit(lambda h5f_name: print(h5f_name))
+
 
 if __name__ == '__main__':
     main()

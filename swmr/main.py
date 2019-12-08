@@ -8,21 +8,35 @@ class SwmrReader(Process):
     def __init__(self, event, args, timeout=1.0):
         super(SwmrReader, self).__init__()
         self.event = event
+        self.args = args
         self.timeout = timeout
 
-        self.h5f = h5py.File(args.filename, 'r', libver='latest', swmr=True)
-        self.dataset = self.h5f[args.dataset_name]
-
     def timeout_wait(self, t=None):
-        self.event.wait(t if t is not None else self.timeout)
+        response = self.event.wait(t if t is not None else self.timeout)
         self.event.clear()
+        return response
 
     def run(self):
+        # wait for initial signal: dataset has been created
+        self.timeout_wait()
+
+        # open hdf5 file in read mode, with latest lib version and swmr=True
+        self.h5f = h5py.File(self.args.filename, 'r',
+                             libver='latest', swmr=True)
+
+        # select dataset
+        self.dataset = self.h5f[self.args.dataset_name]
+
+        # while signals arrive before timeout
         while self.timeout_wait():
+            # refresh dataset
             self.dataset.refresh()
+
+            # get current shape
             shape = self.dataset.shape
             print('new shape:', shape)
 
+        # close hdf5 file
         self.h5f.close()
 
 
@@ -33,25 +47,31 @@ class SwmrWriter(Process):
         self.args = args
         self.data = np.random.rand(self.args.length, 42)
 
+    def run(self):
         # open hdf5 file in write mode, with latest lib version
         # note: without libver='latest' SWMR will not work
-        self.h5f = h5py.File(args.filename, 'w', libver='latest')
+        self.h5f = h5py.File(self.args.filename, 'w', libver='latest')
 
         # create an empty dataset of floats
-        self.h5f.create_dataset(name=args.dataset_name,
+        self.h5f.create_dataset(name=self.args.dataset_name,
                                 shape=(0, 42),
                                 maxshape=(None, 42),
                                 dtype='f4')
 
+        # flush buffers, saves file to disk
         self.h5f.flush()
 
         # activate swmr mode
         # note: new groups and datasets cannot be created in SWMR mode
         self.h5f.swmr_mode = True
+
+        # select dataset
         self.dataset = self.h5f[self.args.dataset_name]
 
-    def run(self):
-         # iterate over data, appending to dataset
+        # send event to other process
+        self.event.set()
+
+        # iterate over data, appending to dataset
         for _ in range(0, self.args.length, self.args.batch_size):
             # compute new shape
             current_length = self.dataset.shape[0]
@@ -69,10 +89,13 @@ class SwmrWriter(Process):
             self.dataset[current_length:, ...] = batch
 
             # flush changes to file
-            self.dataset.flush
+            self.dataset.flush()
 
             # send event to other process
             self.event.set()
+
+        # close hdf5 file
+        self.h5f.close()
 
 
 def main():

@@ -21,6 +21,7 @@ class SwmrReader(Process):
         self.timeout_wait()
 
         # open hdf5 file in read mode, with latest lib version and swmr=True
+        # note: without libver='latest' SWMR will not work
         self.h5f = h5py.File(self.args.filename, 'r',
                              libver='latest', swmr=True)
 
